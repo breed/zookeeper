@@ -29,6 +29,8 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayDeque;
@@ -38,6 +40,7 @@ import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.Adler32;
 import java.util.zip.Checksum;
+
 import org.apache.jute.BinaryInputArchive;
 import org.apache.jute.BinaryOutputArchive;
 import org.apache.jute.InputArchive;
@@ -143,6 +146,27 @@ public class FileTxnLog implements TxnLog, Closeable {
             // Convert to bytes
             logSize = logSize * 1024;
             txnLogSizeLimit = logSize;
+        }
+    }
+
+    public static Constructor<? extends FileOutputStream> fileOutputStreamConstructor;
+    static {
+        String focName = System.getProperty("zookeeper.FileOutputClass", FileOutputStream.class.getName());
+        Class<? extends FileOutputStream> clazz = null;
+        try {
+            clazz = Class.forName(focName).asSubclass(FileOutputStream.class);
+        } catch (ClassNotFoundException e) {
+            LOG.error("Could not resolve " + focName);
+            System.exit(2);
+        } catch (ClassCastException e) {
+            LOG.error("Could not cast " + focName + " to subclass of FileOutputStream", e);
+            System.exit(2);
+        }
+        try {
+            fileOutputStreamConstructor = clazz.getConstructor(File.class);
+        } catch (NoSuchMethodException e) {
+            LOG.error(focName + " does not have a public constructor that takes a File object");
+            System.exit(2);
         }
     }
 
@@ -285,8 +309,13 @@ public class FileTxnLog implements TxnLog, Closeable {
             LOG.info("Creating new log file: {}", Util.makeLogName(hdr.getZxid()));
 
             logFileWrite = new File(logDir, Util.makeLogName(hdr.getZxid()));
-            fos = new FileOutputStream(logFileWrite);
-            logStream = new BufferedOutputStream(fos);
+            try {
+                fos = fileOutputStreamConstructor.newInstance(logFileWrite);
+            } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+                LOG.error("Unexpected reflection error constructing " + fileOutputStreamConstructor.toString() + ": " + e.getMessage(), e);
+                System.exit(2);
+            }
+            logStream = new BufferedOutputStream(fos, 64*1024);
             oa = BinaryOutputArchive.getArchive(logStream);
             FileHeader fhdr = new FileHeader(TXNLOG_MAGIC, VERSION, dbId);
             fhdr.serialize(oa, "fileheader");
