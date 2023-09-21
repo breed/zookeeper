@@ -46,6 +46,7 @@ import org.openjdk.jmh.annotations.Warmup;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -62,11 +63,14 @@ public class LatencyStandaloneBench {
     }
 
     static final String znode = "/bench";
+    static boolean backgroundWrites;
 
         String hostPort = "127.0.0.1:22334";
         ServerCnxnFactory factory;
         ZooKeeperServer zks;
         File dataDir = new File("zkbenchdata");
+        volatile boolean running;
+        Thread backgroundWriter;
 
         public void setUp() {
             try {
@@ -76,6 +80,24 @@ public class LatencyStandaloneBench {
                 zks = new ZooKeeperServer(dataDir, dataDir, 3000);
                 zks.setCreateSessionTrackerServerId(1);
                 factory.startup(zks);
+                running = true;
+                if (backgroundWrites) {
+                    backgroundWriter = new Thread(() -> {
+                        try {
+                            RandomAccessFile raf = new RandomAccessFile("background.dat", "w");
+                            while (running) {
+                                raf.getFD().sync();
+                                raf.seek(0);
+                                // 536MiB writes
+                                for (int i = 0; running && i < 134*1024; i++) {
+                                    raf.write(randomBytes);
+                                }
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    });
+                }
             } catch (IOException | InterruptedException e) {
                 e.printStackTrace();
                 System.exit(2);
@@ -93,8 +115,12 @@ public class LatencyStandaloneBench {
 
         public void tearDown() {
             try {
+                running = false;
                 factory.shutdown();
                 zks.getZKDatabase().close();
+                if (backgroundWrites) {
+                    backgroundWriter.join();
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 System.exit(2);
@@ -195,12 +221,22 @@ public class LatencyStandaloneBench {
         }
     }
     public static void main(String args[]) throws Exception {
-        if (args.length != 2) {
-            System.out.println("USAGE: LatencyStandaloneBench rounds iterations");
+        if (args.length != 3) {
+            System.out.println("USAGE: LatencyStandaloneBench rounds iterations background_writes");
             System.exit(1);
         }
         int rounds = Integer.parseInt(args[0]);
         int iterations = Integer.parseInt(args[1]);
+        if (args[2].equals("true")) {
+            backgroundWrites = true;
+            System.out.println("doing background_writes");
+        } else if (args[2].equals("false")) {
+            backgroundWrites = false;
+            System.out.println("NOT doing background_writes");
+        } else {
+            System.out.println("background_writes must be either true or false. not " + args[2]);
+            System.exit(1);
+        }
         LatencyStandaloneBench benchmark = new LatencyStandaloneBench();
         ArrayList<Record> records = new ArrayList<>();
         for (int round = 0; round < rounds; round++) {
