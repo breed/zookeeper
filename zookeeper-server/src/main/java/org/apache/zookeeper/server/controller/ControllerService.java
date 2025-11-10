@@ -54,10 +54,10 @@ public class ControllerService {
             } else {
                 config = new ControllerServerConfig(args[0]);
             }
-            new ControllerService().start(config);
+            new ControllerService().start(config).join();
         } catch (Exception ex) {
             System.err.println(ex.getMessage());
-            System.err.println("Usage: TestControllerMain controller-port configfile");
+            System.err.println("Usage: TestControllerMain configfile");
             ServiceUtils.requestSystemExit(ExitCode.UNEXPECTED_ERROR.getValue());
         }
     }
@@ -74,6 +74,7 @@ public class ControllerService {
             try {
                 svc.run();
             } catch (Exception e) {
+                e.printStackTrace();
             }
         });
         runner.setDaemon(true);
