@@ -24,6 +24,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import org.apache.zookeeper.server.NIOServerCnxn;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;
+import org.apache.zookeeper.server.ServerCnxn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,5 +122,16 @@ public class ControllableConnectionFactory extends NIOServerCnxnFactory {
 
     public synchronized void holdFutureResponses(long requestsToHold) {
         this.remainingResponsesToHold = requestsToHold;
+    }
+
+    public void closeOnReply(ServerCnxn.DisconnectReason disconnectReason, long sessionId) {
+        for (ServerCnxn cnxn: cnxns) {
+            if (cnxn instanceof ControllableConnection) {
+                ControllableConnection ccnxn = (ControllableConnection)cnxn;
+                if (sessionId == -1 || ccnxn.getSessionId() == sessionId) {
+                    ccnxn.closeOnNextResponse();
+                }
+            }
+        }
     }
 }

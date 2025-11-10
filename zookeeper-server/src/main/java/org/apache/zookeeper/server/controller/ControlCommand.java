@@ -56,6 +56,8 @@ public class ControlCommand {
         RESET,
         // Force the quorum to elect a new leader.
         ELECTNEWLEADER,
+        // Close the connection when a reply is sent
+        CLOSEONREPLY,
         // More actions go here in the future...
     }
 

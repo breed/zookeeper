@@ -35,6 +35,8 @@ import org.apache.zookeeper.server.ZooKeeperServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import static org.apache.zookeeper.ClientCnxn.PING_XID;
+
 /**
  * Extension of NIOServerCnxn which can inject changes per controller commands.
  * Similar extensions can implement on top of NettyServerCnxn as well.
@@ -43,6 +45,7 @@ import org.slf4j.LoggerFactory;
 public class ControllableConnection extends NIOServerCnxn {
     private static final Logger LOG = LoggerFactory.getLogger(ControllableConnection.class);
     private final ControllableConnectionFactory controller;
+    private boolean closeOnNextResponse;
 
     public ControllableConnection(ZooKeeperServer zk, SocketChannel sock, SelectionKey sk, NIOServerCnxnFactory factory,
                                   NIOServerCnxnFactory.SelectorThread selectorThread) throws IOException {
@@ -52,6 +55,10 @@ public class ControllableConnection extends NIOServerCnxn {
 
     @Override
     public int sendResponse(ReplyHeader header, Record record, String tag) {
+        if (closeOnNextResponse && header.getXid() != PING_XID) {
+            close(DisconnectReason.CHANNEL_DISCONNECTED);
+            return -1;
+        }
         if (controller.shouldSendResponse()) {
             try {
                 return super.sendResponse(header, record, tag);
@@ -77,5 +84,9 @@ public class ControllableConnection extends NIOServerCnxn {
             controller.delayRequestIfNeeded();
             super.readRequest();
         }
+    }
+
+    public void closeOnNextResponse() {
+        closeOnNextResponse = true;
     }
 }

@@ -122,6 +122,14 @@ public class ZooKeeperServerController {
                             ServerCnxn.DisconnectReason.CONNECTION_CLOSE_FORCED);
                 }
                 break;
+            case CLOSEONREPLY:
+                if (command.getParameter() == null) {
+                    cnxnFactory.closeOnReply(ServerCnxn.DisconnectReason.CLOSE_ALL_CONNECTIONS_FORCED, -1L);
+                } else {
+                    // A single parameter should be a session id as long.
+                    // Parse failure exceptions will be sent to the caller.
+                    cnxnFactory.closeOnReply(ServerCnxn.DisconnectReason.CONNECTION_CLOSE_FORCED, Long.decode(command.getParameter()));
+                }
             case EXPIRESESSION:
                 if (command.getParameter() == null) {
                     expireAllSessions();
